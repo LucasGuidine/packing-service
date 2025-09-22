@@ -119,6 +119,13 @@ Recebe um JSON com pedidos e retorna as caixas usadas para cada pedido.
 
 ## 🧪 Testes
 
+⚠️ **Aviso importante**:  
+Para rodar os testes, é necessário ter o **Node.js 18** instalado e instalar as dependências localmente com o seguinte comando:
+
+```bash
+npm install --legacy-peer-deps
+```
+
 ### Testes unitários
 
 ```bash
