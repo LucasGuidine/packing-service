@@ -4,7 +4,7 @@ import { BOXES } from '../../common/constants/boxes.const';
 import { PackRequestDto, ProductDto } from '../dtos/pack-request.dto';
 import { PackedBoxDto } from '../dtos/pack-response.dto';
 
-function permutations(arr: number[]) {
+function getAll3dOrientations(arr: number[]) {
   const res: number[][] = [];
   const [a, b, c] = arr;
   res.push([a, b, c], [a, c, b], [b, a, c], [b, c, a], [c, a, b], [c, b, a]);
@@ -13,13 +13,13 @@ function permutations(arr: number[]) {
   );
 }
 
-function fitsInBox(prod: ProductDto, box: any): boolean {
+function modifyOrientation(prod: ProductDto, box: any): boolean {
   const dims = [
     prod.dimensoes.altura,
     prod.dimensoes.largura,
     prod.dimensoes.comprimento,
   ];
-  const perms = permutations(dims);
+  const perms = getAll3dOrientations(dims);
   return perms.some(
     (p) => p[0] <= box.height && p[1] <= box.width && p[2] <= box.length,
   );
@@ -40,82 +40,88 @@ export class PackagingService implements IPackagingService {
       caixas: PackedBoxDto[];
     }[] = [];
 
-    for (const order of input.pedidos) {
+    input.pedidos.forEach((order) => {
       const products = order.produtos;
       const dontFit = products.filter(
-        (p) => !this.boxes.some((b) => fitsInBox(p, b)),
+        (p) => !this.boxes.some((b) => modifyOrientation(p, b)),
       );
       const fit = products.filter((p) =>
-        this.boxes.some((b) => fitsInBox(p, b)),
+        this.boxes.some((b) => modifyOrientation(p, b)),
       );
 
       const boxesResult: PackedBoxDto[] = [];
 
-      for (const p of dontFit) {
+      dontFit.forEach((p) => {
         boxesResult.push({
           caixa_id: null,
           produtos: [p.produto_id],
           observacao: 'Produto não cabe em nenhuma caixa disponível.',
         });
-      }
+      });
 
       if (fit.length === 0) {
         results.push({
           pedido_id: order.pedido_id,
           caixas: boxesResult,
         });
-        continue;
+        return;
       }
 
       const totalVolume = fit.reduce((s, p) => s + volume(p), 0);
       const boxesOrdered = [...this.boxes].sort((a, b) => a.volume - b.volume);
       let placedAllSingleBox = false;
-      for (const box of boxesOrdered) {
-        const allFitsIndividually = fit.every((p) => fitsInBox(p, box));
+
+      boxesOrdered.forEach((box) => {
+        if (placedAllSingleBox) return;
+        const allFitsIndividually = fit.every((p) => modifyOrientation(p, box));
         if (allFitsIndividually && totalVolume <= box.volume) {
           boxesResult.push({
             caixa_id: box.id,
             produtos: fit.map((p) => p.produto_id),
           });
           placedAllSingleBox = true;
-          break;
         }
-      }
+      });
 
       if (!placedAllSingleBox) {
         let remaining = [...fit].sort((a, b) => volume(b) - volume(a));
-        while (remaining.length > 0) {
+
+        const processRemaining = () => {
+          if (remaining.length === 0) return;
+
           let best = { box: null as any, packed: [] as ProductDto[] };
-          for (const box of this.boxes) {
+          this.boxes.forEach((box) => {
             let remVol = box.volume;
             const packedSim: ProductDto[] = [];
-            for (const p of remaining) {
-              if (fitsInBox(p, box) && volume(p) <= remVol) {
+            remaining.forEach((p) => {
+              if (modifyOrientation(p, box) && volume(p) <= remVol) {
                 packedSim.push(p);
                 remVol -= volume(p);
               }
-            }
+            });
             if (packedSim.length > best.packed.length) {
               best = { box, packed: packedSim };
             }
-          }
+          });
 
           if (best.box == null || best.packed.length === 0) {
             const item = remaining[0];
-            const boxThatFits = this.boxes.find((b) => fitsInBox(item, b));
+            const boxThatFits = this.boxes.find((b) =>
+              modifyOrientation(item, b),
+            );
             if (!boxThatFits) {
               boxesResult.push({
                 caixa_id: null,
                 produtos: [item.produto_id],
                 observacao: 'Produto não cabe em nenhuma caixa disponível.',
               });
-              remaining.shift();
+              remaining = remaining.slice(1);
             } else {
               boxesResult.push({
                 caixa_id: boxThatFits.id,
                 produtos: [item.produto_id],
               });
-              remaining.shift();
+              remaining = remaining.slice(1);
             }
           } else {
             boxesResult.push({
@@ -125,11 +131,15 @@ export class PackagingService implements IPackagingService {
             const packedIds = new Set(best.packed.map((p) => p.produto_id));
             remaining = remaining.filter((p) => !packedIds.has(p.produto_id));
           }
-        }
+
+          processRemaining();
+        };
+
+        processRemaining();
       }
 
       results.push({ pedido_id: order.pedido_id, caixas: boxesResult });
-    }
+    });
 
     return { pedidos: results };
   }
