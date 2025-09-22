@@ -2,9 +2,6 @@ FROM node:18-alpine
 
 WORKDIR /usr/src/app
 
-# Build tools para dependências nativas
-RUN apk add --no-cache python3 make g++
-
 COPY package*.json ./
 
 # Instala pacotes
