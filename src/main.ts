@@ -24,10 +24,14 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, config);
 
-  SwaggerModule.setup('api', app, document);
+  SwaggerModule.setup('packing-service/api', app, document, {
+    swaggerOptions: {
+      url: '/packing-service/api-json',
+    },
+  });
   await app.listen(3000);
   console.log(
-    'Listening on http://localhost:3000 - Swagger: http://localhost:3000/api',
+    'Listening on http://localhost:3000/packing-service - Swagger: http://localhost:3000/packing-service/api',
   );
 }
 bootstrap();
